@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Odoo Debug+</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <div class="kicker">Odoo</div>
+      <div class="host" id="host">—</div>
+    </div>
+    <div class="state" id="state">—</div>
+  </header>
+
+  <section class="hero">
+    <div class="label">Version</div>
+    <div class="version" id="version">—</div>
+    <div class="full" id="version-full"></div>
+  </section>
+
+  <button type="button" class="debug" id="btn-debug">
+    <div class="debug-text">
+      <strong>Mode développeur</strong>
+      <span id="debug-label">Inactif — clic pour activer</span>
+    </div>
+    <span class="switch" id="switch"><i></i></span>
+  </button>
+
+  <div class="modes">
+    <button type="button" id="mode-1">Debug</button>
+    <button type="button" id="mode-assets">Assets</button>
+    <button type="button" id="mode-tests">Tests</button>
+  </div>
+
+  <section class="meta" id="meta">
+    <button type="button" class="chip" id="copy-db" hidden><em>Base</em><b></b></button>
+    <button type="button" class="chip" id="copy-model" hidden><em>Modèle</em><b></b></button>
+    <button type="button" class="chip" id="copy-id" hidden><em>ID</em><b></b></button>
+  </section>
+
+  <button type="button" class="term" id="btn-term">
+    <div>
+      <strong>Terminal</strong>
+      <span>JSON-RPC sur cette base · Ctrl + ,</span>
+    </div>
+    <i>›</i>
+  </button>
+
+  <section class="quick">
+    <div class="label">Accès rapide</div>
+    <div class="list" id="quick"></div>
+  </section>
+
+  <p class="empty" id="empty" hidden>Ouvre une page Odoo pour utiliser l’extension.</p>
+  <div class="toast" id="toast" hidden></div>
+  <script src="popup.js"></script>
+</body>
+</html>

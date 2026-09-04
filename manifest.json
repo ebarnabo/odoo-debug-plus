@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Odoo Debug+",
+  "version": "1.4.1",
+  "description": "Version Odoo sur l’icône et switch debug, dans l’esprit de l’interface Odoo.",
+  "action": {
+    "default_title": "Odoo Debug+",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/idle_16.png",
+      "32": "icons/idle_32.png",
+      "48": "icons/idle_48.png",
+      "128": "icons/idle_128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/on_16.png",
+    "32": "icons/on_32.png",
+    "48": "icons/on_48.png",
+    "128": "icons/on_128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js", "terminal.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["tabs", "scripting", "activeTab", "contextMenus"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["page-bridge.js"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
+  "commands": {
+    "toggle-debug": {
+      "suggested_key": {"default": "Ctrl+Period", "mac": "Command+Period"},
+      "description": "Activer / désactiver le mode debug Odoo"
+    },
+    "toggle-assets": {
+      "suggested_key": {"default": "Ctrl+Shift+Period", "mac": "Command+Shift+Period"},
+      "description": "Activer le mode debug assets Odoo"
+    },
+    "toggle-terminal": {
+      "suggested_key": {"default": "Ctrl+Comma", "mac": "Command+Comma"},
+      "description": "Ouvrir / fermer le terminal Odoo"
+    }
+  }
+}
