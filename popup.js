@@ -1,5 +1,7 @@
 const $ = (id) => document.getElementById(id);
 
+chrome.action.setPopup({ popup: "" }).catch(() => {});
+
 const QUICK = [
   { label: "Backend", kind: "path", path: null },
   { label: "Site web", kind: "path", path: "/" },

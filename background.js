@@ -275,15 +275,49 @@ chrome.action.onClicked.addListener(async (tab) => {
   await toggleDebug(tab, "1");
 });
 
-chrome.runtime.onInstalled.addListener(() => {
+function installMenus() {
   chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({ id: "open-panel", title: "Ouvrir le panneau", contexts: ["action"] });
+    chrome.contextMenus.create({ id: "sep-panel", type: "separator", contexts: ["action"] });
     chrome.contextMenus.create({ id: "toggle-debug", title: "Activer / désactiver le debug", contexts: ["action"] });
     chrome.contextMenus.create({ id: "toggle-assets", title: "Debug assets", contexts: ["action"] });
     chrome.contextMenus.create({ id: "debug-off", title: "Désactiver le debug", contexts: ["action"] });
   });
-});
+}
+
+async function openPanel() {
+  try {
+    await chrome.action.setPopup({ popup: "popup.html" });
+    await chrome.action.openPopup();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await chrome.action.setPopup({ popup: "" });
+  } catch {
+    ignoreLastError();
+    try { await chrome.action.setPopup({ popup: "" }); } catch { ignoreLastError(); }
+    const win = await chrome.windows.getCurrent().catch(() => null);
+    const width = 332;
+    const height = 600;
+    await chrome.windows.create({
+      url: chrome.runtime.getURL("popup.html"),
+      type: "popup",
+      width,
+      height,
+      focused: true,
+      ...(win ? {
+        left: Math.max(0, (win.left || 0) + (win.width || width) - width - 8),
+        top: (win.top || 0) + 48,
+      } : {}),
+    });
+  }
+}
+
+chrome.runtime.onInstalled.addListener(installMenus);
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === "open-panel") {
+    await openPanel();
+    return;
+  }
   if (!tab?.url) return;
   if (info.menuItemId === "toggle-debug") await toggleDebug(tab, "1");
   if (info.menuItemId === "toggle-assets") await toggleDebug(tab, "assets");
