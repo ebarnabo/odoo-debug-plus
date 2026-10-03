@@ -85,6 +85,7 @@ async function paint(tabId, info) {
   const isOdoo = !!(info && info.isOdoo);
   const mode = info?.debugMode || parseDebug(info?.url || "");
   const iconKey = !isOdoo ? "idle" : mode === "assets" || mode === "tests" ? "assets" : mode === "1" ? "on" : "off";
+  syncMenus(info);
   try {
     await chrome.action.setIcon({ tabId, path: ICONS[iconKey] });
     await chrome.action.setBadgeBackgroundColor({ tabId, color: badgeColor(isOdoo ? mode : "off") });
@@ -176,9 +177,38 @@ async function toggleDebug(tab, mode) {
   const current = parseDebug(tab.url);
   let next;
   if (mode === "assets") next = current === "assets" ? "off" : "assets";
+  else if (mode === "tests") next = current === "tests" ? "off" : "tests";
   else if (mode === "1") next = current === "off" ? "1" : "off";
   else next = current === "off" ? "1" : "off";
   await safeTabUpdate(tab.id, { url: buildUrl(tab.url, next) });
+}
+
+async function setDebug(tab, mode) {
+  if (!tab?.id || !tab.url) return;
+  await safeTabUpdate(tab.id, { url: buildUrl(tab.url, mode) });
+}
+
+async function toggleTerminal(tab) {
+  if (!tab?.id || !(await tabExists(tab.id))) return false;
+  let res = await safeSendMessage(tab.id, { type: "toggle-terminal" });
+  if (!res) {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["terminal.js"] });
+      res = await safeSendMessage(tab.id, { type: "toggle-terminal" });
+    } catch { ignoreLastError(); }
+  }
+  return !!res;
+}
+
+async function copyText(tab, text) {
+  if (!tab?.id || !text) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (value) => navigator.clipboard.writeText(value),
+      args: [text],
+    });
+  } catch { ignoreLastError(); }
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -214,13 +244,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     chrome.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
       if (!tab?.id) return sendResponse({ ok: false });
       try {
-        if (!(await tabExists(tab.id))) return sendResponse({ ok: false });
-        let res = await safeSendMessage(tab.id, { type: "toggle-terminal" });
-        if (!res) {
-          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["terminal.js"] });
-          res = await safeSendMessage(tab.id, { type: "toggle-terminal" });
-        }
-        sendResponse({ ok: !!res });
+        sendResponse({ ok: await toggleTerminal(tab) });
       } catch (e) {
         ignoreLastError();
         sendResponse({ ok: false, error: String(e) });
@@ -258,16 +282,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (!tab) return;
   if (command === "toggle-debug") await toggleDebug(tab, "1");
   if (command === "toggle-assets") await toggleDebug(tab, "assets");
-  if (command === "toggle-terminal") {
-    if (!(await tabExists(tab.id))) return;
-    let res = await safeSendMessage(tab.id, { type: "toggle-terminal" });
-    if (!res) {
-      try {
-        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["terminal.js"] });
-        await safeSendMessage(tab.id, { type: "toggle-terminal" });
-      } catch { ignoreLastError(); }
-    }
-  }
+  if (command === "toggle-terminal") await toggleTerminal(tab);
 });
 
 chrome.action.onClicked.addListener(async (tab) => {
@@ -275,53 +290,121 @@ chrome.action.onClicked.addListener(async (tab) => {
   await toggleDebug(tab, "1");
 });
 
+const ACTION_CTX = { contexts: ["action"] };
+const QUICK_PATHS = {
+  "quick-backend": null,
+  "quick-site": "/",
+  "quick-selector": "/web/database/selector",
+  "quick-manager": "/web/database/manager",
+  "quick-login": "/web/login",
+};
+
+function hashParams(url) {
+  try { return new URLSearchParams((new URL(url).hash || "").replace(/^#/, "")); }
+  catch { return new URLSearchParams(); }
+}
+
+let menuGen = 0;
+
 function installMenus() {
+  const gen = ++menuGen;
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: "open-panel", title: "Ouvrir le panneau", contexts: ["action"] });
-    chrome.contextMenus.create({ id: "sep-panel", type: "separator", contexts: ["action"] });
-    chrome.contextMenus.create({ id: "toggle-debug", title: "Activer / désactiver le debug", contexts: ["action"] });
-    chrome.contextMenus.create({ id: "toggle-assets", title: "Debug assets", contexts: ["action"] });
-    chrome.contextMenus.create({ id: "debug-off", title: "Désactiver le debug", contexts: ["action"] });
+    if (gen !== menuGen) return;
+    chrome.contextMenus.create({ id: "mode-dev", title: "Mode développeur", type: "checkbox", checked: false, ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "mode-1", title: "Debug", type: "checkbox", checked: false, ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "mode-assets", title: "Assets", type: "checkbox", checked: false, ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "mode-tests", title: "Tests", type: "checkbox", checked: false, ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "toggle-terminal", title: "Terminal", ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick", title: "Accès rapide", ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick-backend", parentId: "quick", title: "Backend", ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick-site", parentId: "quick", title: "Site web", ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick-selector", parentId: "quick", title: "Choisir une base", ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick-manager", parentId: "quick", title: "Manager des bases", ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick-login", parentId: "quick", title: "Écran de connexion", ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick-copy-url", parentId: "quick", title: "Copier l’URL", ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick-copy-db", parentId: "quick", title: "Copier la base", enabled: false, ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick-copy-model", parentId: "quick", title: "Copier le modèle", enabled: false, ...ACTION_CTX });
+    chrome.contextMenus.create({ id: "quick-copy-id", parentId: "quick", title: "Copier l’ID", enabled: false, ...ACTION_CTX });
   });
+}
+
+async function syncMenus(info) {
+  const mode = info?.debugMode || "off";
+  const isOdoo = !!info?.isOdoo;
+  const hasSite = !!(info?.url && /^https?:/i.test(info.url));
+  const hash = hashParams(info?.url || "");
+  const db = info?.db || "";
+  const model = hash.get("model") || "";
+  const recordId = hash.get("id") || "";
+  const updates = [
+    ["mode-dev", { checked: mode !== "off", enabled: isOdoo }],
+    ["mode-1", { checked: mode === "1", enabled: isOdoo }],
+    ["mode-assets", { checked: mode === "assets", enabled: isOdoo }],
+    ["mode-tests", { checked: mode === "tests", enabled: isOdoo }],
+    ["toggle-terminal", { enabled: isOdoo }],
+    ["quick", { enabled: hasSite }],
+    ["quick-copy-db", { enabled: !!db, title: db ? `Copier la base (${db})` : "Copier la base" }],
+    ["quick-copy-model", { enabled: !!model, title: model ? `Copier le modèle (${model})` : "Copier le modèle" }],
+    ["quick-copy-id", { enabled: !!recordId, title: recordId ? `Copier l’ID (${recordId})` : "Copier l’ID" }],
+  ];
+  for (const [menuId, patch] of updates) {
+    try { await chrome.contextMenus.update(menuId, patch); }
+    catch { ignoreLastError(); }
+  }
 }
 
 async function openPanel() {
   try {
     await chrome.action.setPopup({ popup: "popup.html" });
     await chrome.action.openPopup();
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await chrome.action.setPopup({ popup: "" });
   } catch {
     ignoreLastError();
-    try { await chrome.action.setPopup({ popup: "" }); } catch { ignoreLastError(); }
     const win = await chrome.windows.getCurrent().catch(() => null);
     const width = 332;
-    const height = 600;
-    await chrome.windows.create({
-      url: chrome.runtime.getURL("popup.html"),
-      type: "popup",
-      width,
-      height,
-      focused: true,
-      ...(win ? {
-        left: Math.max(0, (win.left || 0) + (win.width || width) - width - 8),
-        top: (win.top || 0) + 48,
-      } : {}),
-    });
+    const height = 620;
+    try {
+      await chrome.windows.create({
+        url: chrome.runtime.getURL("popup.html"),
+        type: "popup",
+        width,
+        height,
+        focused: true,
+        ...(win ? {
+          left: Math.max(0, (win.left || 0) + (win.width || width) - width - 8),
+          top: (win.top || 0) + 48,
+        } : {}),
+      });
+    } catch { ignoreLastError(); }
+  } finally {
+    setTimeout(() => chrome.action.setPopup({ popup: "" }).catch(ignoreLastError), 120);
   }
 }
 
+const menuShown = chrome.contextMenus.onShown || chrome.menus?.onShown;
+if (menuShown) {
+  menuShown.addListener((info) => {
+    const contexts = info?.contexts || [];
+    if (contexts.includes("action") || contexts.includes("browser_action")) openPanel();
+  });
+}
+
+installMenus();
 chrome.runtime.onInstalled.addListener(installMenus);
+chrome.runtime.onStartup.addListener(installMenus);
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === "open-panel") {
-    await openPanel();
-    return;
-  }
+  const id = info.menuItemId;
   if (!tab?.url) return;
-  if (info.menuItemId === "toggle-debug") await toggleDebug(tab, "1");
-  if (info.menuItemId === "toggle-assets") await toggleDebug(tab, "assets");
-  if (info.menuItemId === "debug-off") await safeTabUpdate(tab.id, { url: buildUrl(tab.url, "off") });
+  if (id === "mode-dev") await toggleDebug(tab, "1");
+  if (id === "mode-1") await setDebug(tab, parseDebug(tab.url) === "1" ? "off" : "1");
+  if (id === "mode-assets") await toggleDebug(tab, "assets");
+  if (id === "mode-tests") await toggleDebug(tab, "tests");
+  if (id === "toggle-terminal") await toggleTerminal(tab);
+  if (Object.hasOwn(QUICK_PATHS, id)) await safeTabUpdate(tab.id, { url: pathUrl(tab.url, QUICK_PATHS[id]) });
+  if (id === "quick-copy-url") await copyText(tab, tab.url);
+  if (id === "quick-copy-db") await copyText(tab, cache.get(tab.id)?.db || "");
+  if (id === "quick-copy-model") await copyText(tab, hashParams(tab.url).get("model") || "");
+  if (id === "quick-copy-id") await copyText(tab, hashParams(tab.url).get("id") || "");
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => cache.delete(tabId));

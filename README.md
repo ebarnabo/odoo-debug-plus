@@ -24,7 +24,7 @@ Si les icônes manquent : `python3 generate_icons.py`
 |---|---|
 | Badge | Version courte |
 | Clic gauche sur l’icône | Active ou désactive le mode développeur |
-| Clic droit | Panneau, puis debug, assets et désactivation |
+| Clic droit | Panneau : mode développeur, debug, assets, tests, terminal, accès rapide |
 | Switch | `?debug=1` / `?debug=0` |
 | Debug / Assets / Tests | Mode correspondant |
 | Terminal | Overlay JSON-RPC |
