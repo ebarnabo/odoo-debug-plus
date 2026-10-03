@@ -9,6 +9,11 @@ const cache = new Map();
 
 function ignoreLastError() { void chrome.runtime.lastError; }
 
+function menusApi() {
+  if (typeof browser !== "undefined" && browser.menus) return browser.menus;
+  return chrome.contextMenus;
+}
+
 async function tabExists(tabId) {
   if (tabId == null) return false;
   try { return !!(await chrome.tabs.get(tabId)); }
@@ -102,26 +107,28 @@ async function paint(tabId, info) {
 }
 
 async function readSessionFromPage(tabId) {
+  const func = () => {
+    const odoo = window.odoo;
+    const session = (odoo && (odoo.__session_info__ || odoo.session_info || odoo.session)) || window.__session_info__ || null;
+    const body = document.body ? document.body.className : "";
+    const isOdoo = !!(odoo || session || /o_web_client|o_home_menu|o_action_manager|o_website/.test(body));
+    return {
+      isOdoo,
+      server_version: session?.server_version || null,
+      server_version_info: session?.server_version_info || null,
+      db: session?.db || null,
+      name: session?.name || session?.username || null,
+    };
+  };
   try {
-    const [{ result } = {}] = await chrome.scripting.executeScript({
-      target: { tabId },
-      world: "MAIN",
-      func: () => {
-        const odoo = window.odoo;
-        const session = (odoo && (odoo.__session_info__ || odoo.session_info || odoo.session)) || window.__session_info__ || null;
-        const body = document.body ? document.body.className : "";
-        const isOdoo = !!(odoo || session || /o_web_client|o_home_menu|o_action_manager|o_website/.test(body));
-        return {
-          isOdoo,
-          server_version: session?.server_version || null,
-          server_version_info: session?.server_version_info || null,
-          db: session?.db || null,
-          name: session?.name || session?.username || null,
-        };
-      },
-    });
+    const [{ result } = {}] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func });
     return result || null;
-  } catch { return null; }
+  } catch {
+    try {
+      const [{ result } = {}] = await chrome.scripting.executeScript({ target: { tabId }, func });
+      return result || null;
+    } catch { return null; }
+  }
 }
 
 function normalizeInfo(raw, tabUrl) {
@@ -307,25 +314,33 @@ function hashParams(url) {
 let menuGen = 0;
 
 function installMenus() {
+  const menus = menusApi();
   const gen = ++menuGen;
-  chrome.contextMenus.removeAll(() => {
-    if (gen !== menuGen) return;
-    chrome.contextMenus.create({ id: "mode-dev", title: "Mode développeur", type: "checkbox", checked: false, ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "mode-1", title: "Debug", type: "checkbox", checked: false, ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "mode-assets", title: "Assets", type: "checkbox", checked: false, ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "mode-tests", title: "Tests", type: "checkbox", checked: false, ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "toggle-terminal", title: "Terminal", ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick", title: "Accès rapide", ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick-backend", parentId: "quick", title: "Backend", ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick-site", parentId: "quick", title: "Site web", ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick-selector", parentId: "quick", title: "Choisir une base", ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick-manager", parentId: "quick", title: "Manager des bases", ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick-login", parentId: "quick", title: "Écran de connexion", ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick-copy-url", parentId: "quick", title: "Copier l’URL", ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick-copy-db", parentId: "quick", title: "Copier la base", enabled: false, ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick-copy-model", parentId: "quick", title: "Copier le modèle", enabled: false, ...ACTION_CTX });
-    chrome.contextMenus.create({ id: "quick-copy-id", parentId: "quick", title: "Copier l’ID", enabled: false, ...ACTION_CTX });
-  });
+  Promise.resolve(menus.removeAll())
+    .catch(ignoreLastError)
+    .then(() => {
+      if (gen !== menuGen) return;
+      const items = [
+        { id: "mode-dev", title: "Mode développeur", type: "checkbox", checked: false, ...ACTION_CTX },
+        { id: "mode-1", title: "Debug", type: "checkbox", checked: false, ...ACTION_CTX },
+        { id: "mode-assets", title: "Assets", type: "checkbox", checked: false, ...ACTION_CTX },
+        { id: "mode-tests", title: "Tests", type: "checkbox", checked: false, ...ACTION_CTX },
+        { id: "toggle-terminal", title: "Terminal", ...ACTION_CTX },
+        { id: "quick", title: "Accès rapide", ...ACTION_CTX },
+        { id: "quick-backend", parentId: "quick", title: "Backend", ...ACTION_CTX },
+        { id: "quick-site", parentId: "quick", title: "Site web", ...ACTION_CTX },
+        { id: "quick-selector", parentId: "quick", title: "Choisir une base", ...ACTION_CTX },
+        { id: "quick-manager", parentId: "quick", title: "Manager des bases", ...ACTION_CTX },
+        { id: "quick-login", parentId: "quick", title: "Écran de connexion", ...ACTION_CTX },
+        { id: "quick-copy-url", parentId: "quick", title: "Copier l’URL", ...ACTION_CTX },
+        { id: "quick-copy-db", parentId: "quick", title: "Copier la base", enabled: false, ...ACTION_CTX },
+        { id: "quick-copy-model", parentId: "quick", title: "Copier le modèle", enabled: false, ...ACTION_CTX },
+        { id: "quick-copy-id", parentId: "quick", title: "Copier l’ID", enabled: false, ...ACTION_CTX },
+      ];
+      for (const item of items) {
+        try { menus.create(item); } catch { ignoreLastError(); }
+      }
+    });
 }
 
 async function syncMenus(info) {
@@ -348,7 +363,7 @@ async function syncMenus(info) {
     ["quick-copy-id", { enabled: !!recordId, title: recordId ? `Copier l’ID (${recordId})` : "Copier l’ID" }],
   ];
   for (const [menuId, patch] of updates) {
-    try { await chrome.contextMenus.update(menuId, patch); }
+    try { await menusApi().update(menuId, patch); }
     catch { ignoreLastError(); }
   }
 }
@@ -376,15 +391,20 @@ async function openPanel() {
       });
     } catch { ignoreLastError(); }
   } finally {
-    setTimeout(() => chrome.action.setPopup({ popup: "" }).catch(ignoreLastError), 120);
+    setTimeout(() => {
+      try { Promise.resolve(chrome.action.setPopup({ popup: "" })).catch(ignoreLastError); }
+      catch { ignoreLastError(); }
+    }, 120);
   }
 }
 
-const menuShown = chrome.contextMenus.onShown || chrome.menus?.onShown;
-if (menuShown) {
-  menuShown.addListener((info) => {
+const menus = menusApi();
+if (menus.onShown) {
+  menus.onShown.addListener((info) => {
     const contexts = info?.contexts || [];
-    if (contexts.includes("action") || contexts.includes("browser_action")) openPanel();
+    if (contexts.includes("action") || contexts.includes("browser_action") || contexts.includes("page_action")) {
+      openPanel();
+    }
   });
 }
 
@@ -392,7 +412,7 @@ installMenus();
 chrome.runtime.onInstalled.addListener(installMenus);
 chrome.runtime.onStartup.addListener(installMenus);
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+menus.onClicked.addListener(async (info, tab) => {
   const id = info.menuItemId;
   if (!tab?.url) return;
   if (id === "mode-dev") await toggleDebug(tab, "1");

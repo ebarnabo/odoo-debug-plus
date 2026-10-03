@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 :root {
   --odoo: #714b67;
   --teal: #017e84;
@@ -13,7 +12,7 @@ html, body {
   width: 312px;
   background: var(--bg);
   color: var(--text);
-  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  font-family: "Segoe UI", system-ui, sans-serif;
 }
 header {
   background: var(--odoo);

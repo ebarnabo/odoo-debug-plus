@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 
-chrome.action.setPopup({ popup: "" }).catch(() => {});
+try { Promise.resolve(chrome.action.setPopup({ popup: "" })).catch(() => {}); } catch {}
 
 const QUICK = [
   { label: "Backend", kind: "path", path: null },

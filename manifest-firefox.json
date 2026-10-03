@@ -25,7 +25,7 @@
     "128": "icons/on_128.png"
   },
   "background": {
-    "service_worker": "background.js"
+    "scripts": ["background.js"]
   },
   "content_scripts": [
     {
@@ -34,7 +34,7 @@
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["tabs", "scripting", "activeTab", "contextMenus"],
+  "permissions": ["tabs", "scripting", "activeTab", "menus", "contextMenus"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "web_accessible_resources": [
     {
